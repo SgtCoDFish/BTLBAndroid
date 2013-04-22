@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">BTLB</string>
+    <string name="menu_settings">Einstellungen</string>
+    <string name="please_wait">Bitte schalten Sie das BTLBDesktop-App an, wählen Sie dieses Android-Gerät aus, und auf eine Verbindung warten.</string>
+    <string name="cancel_search">Bluetooth-Suche enden</string>
+    <string name="start_search">Bluetooth-Suche starten</string>
+    <string name="press_start">Drücken Sie die unten stehende Knopf, um die Bluetooth-Suche zu starten.</string>
+    <string name="device_name_info">Bluetoothname Ihres Geräts: </string>
+    <string name="no_bluetooth">Ihnen Bluetoothgerät hat kein Bluetooth-Adapter. Sorry!</string>
+    <string name="no_bluetooth_title">Kein Bluetooth!</string>
+    <string name="no_bluetooth_button">Nicht möglich ohne Bluetooth!</string>
+    <string name="needs_bluetooth">Dieses App braucht Bluetooth. Bitte schalten Sie Bluetooth an!</string>
+	<string name="turn_bluetooth_on">Bluetooth anschalten</string>
+	
+</resources>
