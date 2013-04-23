@@ -1,7 +1,19 @@
 package com.sgtcodfish.btlb;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.UUID;
+
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothServerSocket;
+import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -9,15 +21,12 @@ import android.view.Menu;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import android.bluetooth.*;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-
-public class BTLBAndroid extends Activity {	
+public class BTLBAndroid extends Activity {
+	public final UUID BTLB_UUID = UUID.fromString("08abb94d-2b16-44e9-ae95-e2d18b614496");
+	
 	enum BTLBState {
 		BTLB_STATE_WAITSTART,
 		BTLB_STATE_SEARCHING,
@@ -27,10 +36,17 @@ public class BTLBAndroid extends Activity {
 	Button actionButton = null;
 	TextView infoText = null;
 	TextView deviceName= null;
+	ProgressBar progressIndicator = null;
+	
 	boolean searchBluetooth = false;
 	boolean hasBluetooth = true;
 	
 	BluetoothAdapter localAdapter = null;
+	
+	BluetoothServerSocket serverSocket = null;
+	BTLBServerSocketWaiter socketWaiter = null;
+	
+	BluetoothSocket socket = null;
 	
 	BTLBState state = BTLBState.BTLB_STATE_WAITSTART;
 	
@@ -61,6 +77,29 @@ public class BTLBAndroid extends Activity {
 	
 	BTLBBluetoothBroadcastReceiver bluetoothBroadcastReceiver = new BTLBBluetoothBroadcastReceiver();
 	
+	class BTLBServerSocketWaiter extends AsyncTask<BluetoothServerSocket, Void, BluetoothSocket> {
+		@Override
+		protected BluetoothSocket doInBackground(BluetoothServerSocket... params) {
+			try {
+				Log.d("DIB", "In doInBackground" + params[0]);
+				BluetoothSocket bluetoothSocket = params[0].accept();
+				//bluetoothSocket.close();
+				Log.d("DIB", "Socket accepted!");
+				return bluetoothSocket;
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			return null;
+		}
+		
+		@Override
+		protected void onPostExecute(BluetoothSocket socket) {
+			Log.d("CONNECTION_ESTABLISHED", "Connection established with remote device: "
+					+ socket.getRemoteDevice().getName() + ": " + socket.getRemoteDevice().getAddress());
+			socketFound(socket);
+		}
+	}
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -69,6 +108,7 @@ public class BTLBAndroid extends Activity {
 		infoText = (TextView) this.findViewById(R.id.infoText);
 		deviceName = (TextView) this.findViewById(R.id.dev_name);
 		deviceName.setVisibility(View.INVISIBLE);
+		progressIndicator = (ProgressBar) this.findViewById(R.id.progressIndicator);
 		
 		// check that the device has bluetooth
 		localAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -112,8 +152,16 @@ public class BTLBAndroid extends Activity {
 	 * Called to set the app into an unusable state if the device doesn't have bluetooth/has bluetooth but won't switch it on.
 	 */
 	public void bluetoothFail() {
+		this.
+		progressIndicator.setVisibility(View.INVISIBLE);
 		deviceName.setVisibility(View.INVISIBLE);
 		infoText.setText(R.string.needs_bluetooth);
+		
+		if(socketWaiter != null) {
+			socketWaiter.cancel(true);
+			socketWaiter = null;
+			serverSocket = null;
+		}
 		
 		if(!hasBluetooth) {
 			// if we don't have bluetooth, don't allow anything to be done
@@ -153,10 +201,6 @@ public class BTLBAndroid extends Activity {
 		return true;
 	}
 	
-	public void run() {
-		
-	}
-	
 	public void setState(BTLBState nState) {
 		state = nState;
 		Log.d("STATE_CHANGE", nState.toString());
@@ -182,32 +226,66 @@ public class BTLBAndroid extends Activity {
 		
 		// change the text/button
 		infoText.setText(R.string.please_wait);
+		progressIndicator.setVisibility(View.VISIBLE);
 		
 		actionButton.setText(R.string.cancel_search);
 		actionButton.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				cancelBluetoothSearch();
+				setState(BTLBState.BTLB_STATE_WAITSTART);
 			}
 		});
 		
 		searchBluetooth = true;
+		
+		try {
+			serverSocket = localAdapter.listenUsingRfcommWithServiceRecord("BTLB", BTLB_UUID);
+			socketWaiter = new BTLBServerSocketWaiter();
+			socketWaiter.execute(serverSocket);
+		} catch (IOException e) {
+			Log.w("IO Fail", "Failed while trying to get connection.", e);
+		}
 	}
 	
 	public void cancelBluetoothSearch() {
 		//Log.d("BT_SEARCH_CANCEL", "User cancelled bluetooth search.");
 		
 		// change text/button
+		progressIndicator.setVisibility(View.INVISIBLE);
+		if(searchBluetooth) {
+			socketWaiter.cancel(true);
+			serverSocket = null;
+			socketWaiter = null;
+		}
+		
 		infoText.setText(R.string.press_start);
 		
 		actionButton.setText(R.string.start_search);
 		actionButton.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				startBluetoothSearch();
+				setState(BTLBState.BTLB_STATE_SEARCHING);
 			}
 		});
 		
 		searchBluetooth = false;
+	}
+	
+	public void socketFound(BluetoothSocket connection) {
+		Log.d("SOCKET_FOUND", "In socketFound");
+		socket = connection;
+		try {
+			//socket.connect();
+			InputStream is = socket.getInputStream();
+			byte input[] = new byte[20];
+			is.read(input);
+			for(byte b : input) {
+				Log.d("READ", Byte.toString(b));
+			}
+			Log.d("READ", input.toString());
+		} catch(IOException ioe) {
+			Log.d("IO_EXCEPTION", "IOE trying to read from bluetooth connection", ioe);
+		}
+		
 	}
 }

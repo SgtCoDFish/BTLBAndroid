@@ -25,7 +25,7 @@
         android:text="@string/start_search" />
 
     <ProgressBar
-        android:id="@+id/progressBar1"
+        android:id="@+id/progressIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
@@ -36,7 +36,7 @@
         android:id="@+id/dev_name"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/progressBar1"
+        android:layout_below="@+id/progressIndicator"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="23dp"
         android:text="@string/device_name_info"

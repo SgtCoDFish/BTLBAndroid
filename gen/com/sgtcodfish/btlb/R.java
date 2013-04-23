@@ -18,7 +18,7 @@ public final class R {
         public static final int dev_name=0x7f070003;
         public static final int infoText=0x7f070000;
         public static final int menu_settings=0x7f070004;
-        public static final int progressBar1=0x7f070002;
+        public static final int progressIndicator=0x7f070002;
     }
     public static final class layout {
         public static final int activity_btlbandroid=0x7f030000;
