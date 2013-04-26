@@ -238,11 +238,11 @@ public class BTLBAndroid extends Activity {
 			break;
 			
 		case BTLB_STATE_CONNECTED_PLAYING:
-			connectedLoop(true);
+			infoText.setText("PLAYING");
 			break;
 			
 		case BTLB_STATE_CONNECTED_PAUSED:
-			connectedLoop(false);
+			infoText.setText("NOT PLAYING");
 			break;
 		default:
 			Log.d("WAT", "wat");
@@ -280,6 +280,10 @@ public class BTLBAndroid extends Activity {
 		//Log.d("BT_SEARCH_CANCEL", "User cancelled bluetooth search.");
 		
 		// change text/button
+		if(btlbPlayer != null) {
+			btlbPlayer.cease();
+			btlbPlayer = null;
+		}
 		progressIndicator.setVisibility(View.INVISIBLE);
 		if(searchBluetooth) {
 			socketWaiter.cancel(true);
@@ -303,76 +307,7 @@ public class BTLBAndroid extends Activity {
 	public void socketFound(BluetoothSocket connection) {
 		socket = connection;
 		Log.d("MIN_BUFFER_SIZE", "Minimum buffer size: " + AudioTrack.getMinBufferSize(44100, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT));
-		btlbPlayer = new BTLBAudioPlayer();
-		
-//		try {
-//			//socket.connect();
-//			InputStream is = socket.getInputStream();
-//			byte input[] = new byte[20];
-//			is.read(input);
-//			for(byte b : input) {
-//				Log.d("READ", Byte.toString(b));
-//			}
-//			Log.d("READ", input.toString());
-//		} catch(IOException ioe) {
-//			Log.d("IO_EXCEPTION", "IOE trying to read from bluetooth connection", ioe);
-//		}
-//		
-	}
-	
-	class BTDataReader extends Thread {
-		// this is horrible i know :P
-		InputStream is = null;
-		BTLBAudioPlayer aP = null;
-		
-		byte buffer[] = new byte[100000];
-		int bytesRead = 0;
-		
-		BTDataReader(InputStream nis, BTLBAudioPlayer naP) {
-			this.is = nis;
-			this.aP = naP;
-			
-			aP.setBuffer(buffer);
-			aP.start();
-		}
-
-		@Override
-		public void run() {
-			try {
-				bytesRead = is.read(buffer);
-				Log.d("B_READ", "Bytes read:" + bytesRead);
-				if(bytesRead > 90000) {
-					aP.pause();
-					byte bufferTemp[] = new byte[20000];
-					System.arraycopy(buffer, 80000, bufferTemp, 0, 15000);
-					buffer = null;
-					buffer = new byte[100000];
-					System.arraycopy(bufferTemp, 0, bufferTemp, 0, bufferTemp.length);
-					aP.notify();
-				}
-			} catch (IOException e) {
-				Log.d("BTDR", "BTDR IOE", e);
-			}
-		}
-	}
-	
-	BTDataReader dataReader = null;
-	/**
-	 * The loop to run when a connection is established.
-	 * @param play true if we should play music, false otherwise.
-	 */
-	public void connectedLoop(boolean play) {
-		if(play) {
-			InputStream is = null;
-			
-			try {
-				is = socket.getInputStream();
-			} catch(IOException ioe) {
-				Log.d("IS_FAIL", "Couldn't get input stream.");
-			}
-			
-			dataReader = new BTDataReader(is, btlbPlayer);
-		} else {
-		}
+		btlbPlayer = new BTLBAudioPlayer(socket);
+		btlbPlayer.start();
 	}
 }

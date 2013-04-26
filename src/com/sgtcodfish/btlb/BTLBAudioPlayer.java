@@ -1,8 +1,13 @@
 package com.sgtcodfish.btlb;
 
+import java.io.IOException;
+import java.io.InputStream;
+
+import android.bluetooth.BluetoothSocket;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.util.Log;
 
 /**
  * Streams any loaded audio data to the android device's speakers/attached headphones.
@@ -14,11 +19,14 @@ public class BTLBAudioPlayer extends Thread {
 	public static int sampleRateInHz = 44100;
 	public static int bufferSize = 88200;
 	
-	byte buffer[] = null;
+	byte buffer[] = new byte[bufferSize * 10];
+	boolean play = true;
 	
 	AudioTrack audioTrack = null;
+	BluetoothSocket connection = null;
 	
-	public BTLBAudioPlayer() {
+	public BTLBAudioPlayer(BluetoothSocket connection) {
+		this.connection = connection; 
 	}
 	
 	@Override
@@ -32,24 +40,34 @@ public class BTLBAudioPlayer extends Thread {
 
 	@Override
 	public void run() {
-		if(buffer.length > 0) {
-			audioTrack.write(buffer, 0, buffer.length);
-		}
-	}
-	
-	public void setBuffer(byte[] nbuffer) {
-		if(nbuffer.length < minBufferSize) {
-			throw new IllegalArgumentException("Call to setBuffer(byte[]) with buffer too small! Must be at least " + minBufferSize);
-		}
-		
-		this.buffer = nbuffer;
-	}
-	
-	public void pause() {
-		try {
-			this.wait();
-		} catch (InterruptedException ie) {
+		if(connection != null) {
+			InputStream inputStream = null;
+			try {
+				inputStream = connection.getInputStream();
+			} catch (IOException e1) {
+				Log.d("NO_IS", "Couldn't get input stream.");
+				return;
+			}
 			
+			while(play) {
+				try {				
+					//inputStream.read(buffer);
+					//int read = inputStream.read(buffer, 0, bufferSize);
+					int read = inputStream.read(buffer);
+					Log.d("BYTES_READ", "Read " + read + "B");
+					audioTrack.play();
+					audioTrack.write(buffer, 0, read);
+					
+				} catch (IOException e) {
+					Log.d("IO_EXCEPTION", "IO exception in AudioPlayer.run()", e);
+					break;
+				}
+			}
 		}
+	}
+	
+	public void cease() {
+		play = false;
+		audioTrack.stop();
 	}
 }
