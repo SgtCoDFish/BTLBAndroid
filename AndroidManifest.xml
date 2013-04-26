@@ -7,6 +7,7 @@
     <uses-sdk
         android:minSdkVersion="10"
         android:targetSdkVersion="10" />
+
     <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <application
@@ -23,6 +24,13 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+        <activity
+            android:name="com.sgtcodfish.btlb.AudioStreamActivity"
+            android:label="@string/title_activity_audio_stream" >
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.sgtcodfish.btlb.BTLBAndroid" />
         </activity>
     </application>
 

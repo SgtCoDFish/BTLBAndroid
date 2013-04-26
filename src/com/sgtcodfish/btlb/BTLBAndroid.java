@@ -13,6 +13,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
@@ -30,7 +33,9 @@ public class BTLBAndroid extends Activity {
 	enum BTLBState {
 		BTLB_STATE_WAITSTART,
 		BTLB_STATE_SEARCHING,
-		BTLB_STATE_NOBLUETOOTH
+		BTLB_STATE_NOBLUETOOTH,
+		BTLB_STATE_CONNECTED_PLAYING,
+		BTLB_STATE_CONNECTED_PAUSED
 	}
 	
 	Button actionButton = null;
@@ -49,6 +54,7 @@ public class BTLBAndroid extends Activity {
 	BluetoothSocket socket = null;
 	
 	BTLBState state = BTLBState.BTLB_STATE_WAITSTART;
+	BTLBAudioPlayer btlbPlayer = null;
 	
 	/**
 	 * Used to detect changes in bluetooth state.
@@ -57,7 +63,7 @@ public class BTLBAndroid extends Activity {
 	class BTLBBluetoothBroadcastReceiver extends BroadcastReceiver {
 		@Override
 		public void onReceive(Context context, Intent intent) {
-			Log.d("BROADCAST_RECV", "Received a broadcast.");
+			Log.d("BROADCAST_RECV", "Received a bluetooth broadcast.");
 			if(intent.getAction().compareTo(BluetoothAdapter.ACTION_STATE_CHANGED) == 0) {
 				int extra = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
 				
@@ -77,14 +83,29 @@ public class BTLBAndroid extends Activity {
 	
 	BTLBBluetoothBroadcastReceiver bluetoothBroadcastReceiver = new BTLBBluetoothBroadcastReceiver();
 	
+	class BTLBNoisyBroadcastReceiver extends BroadcastReceiver {
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			Log.d("BROADCAST_RECV", "Received a BECOMING_NOISY broadcast.");
+			if(AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
+				if(state == BTLBState.BTLB_STATE_CONNECTED_PLAYING) {
+					setState(BTLBState.BTLB_STATE_CONNECTED_PAUSED);
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Waits for a socket connection from the desktop app.
+	 * @author Ashley Davis (SgtCoDFish)
+	 */
 	class BTLBServerSocketWaiter extends AsyncTask<BluetoothServerSocket, Void, BluetoothSocket> {
 		@Override
 		protected BluetoothSocket doInBackground(BluetoothServerSocket... params) {
 			try {
 				Log.d("DIB", "In doInBackground" + params[0]);
 				BluetoothSocket bluetoothSocket = params[0].accept();
-				//bluetoothSocket.close();
-				Log.d("DIB", "Socket accepted!");
+				Log.d("DIB", "Socket accepted: " + bluetoothSocket.toString());
 				return bluetoothSocket;
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -215,6 +236,14 @@ public class BTLBAndroid extends Activity {
 		case BTLB_STATE_WAITSTART:
 			cancelBluetoothSearch();
 			break;
+			
+		case BTLB_STATE_CONNECTED_PLAYING:
+			connectedLoop(true);
+			break;
+			
+		case BTLB_STATE_CONNECTED_PAUSED:
+			connectedLoop(false);
+			break;
 		default:
 			Log.d("WAT", "wat");
 			break;
@@ -272,20 +301,78 @@ public class BTLBAndroid extends Activity {
 	}
 	
 	public void socketFound(BluetoothSocket connection) {
-		Log.d("SOCKET_FOUND", "In socketFound");
 		socket = connection;
-		try {
-			//socket.connect();
-			InputStream is = socket.getInputStream();
-			byte input[] = new byte[20];
-			is.read(input);
-			for(byte b : input) {
-				Log.d("READ", Byte.toString(b));
-			}
-			Log.d("READ", input.toString());
-		} catch(IOException ioe) {
-			Log.d("IO_EXCEPTION", "IOE trying to read from bluetooth connection", ioe);
-		}
+		Log.d("MIN_BUFFER_SIZE", "Minimum buffer size: " + AudioTrack.getMinBufferSize(44100, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT));
+		btlbPlayer = new BTLBAudioPlayer();
 		
+//		try {
+//			//socket.connect();
+//			InputStream is = socket.getInputStream();
+//			byte input[] = new byte[20];
+//			is.read(input);
+//			for(byte b : input) {
+//				Log.d("READ", Byte.toString(b));
+//			}
+//			Log.d("READ", input.toString());
+//		} catch(IOException ioe) {
+//			Log.d("IO_EXCEPTION", "IOE trying to read from bluetooth connection", ioe);
+//		}
+//		
+	}
+	
+	class BTDataReader extends Thread {
+		// this is horrible i know :P
+		InputStream is = null;
+		BTLBAudioPlayer aP = null;
+		
+		byte buffer[] = new byte[100000];
+		int bytesRead = 0;
+		
+		BTDataReader(InputStream nis, BTLBAudioPlayer naP) {
+			this.is = nis;
+			this.aP = naP;
+			
+			aP.setBuffer(buffer);
+			aP.start();
+		}
+
+		@Override
+		public void run() {
+			try {
+				bytesRead = is.read(buffer);
+				Log.d("B_READ", "Bytes read:" + bytesRead);
+				if(bytesRead > 90000) {
+					aP.pause();
+					byte bufferTemp[] = new byte[20000];
+					System.arraycopy(buffer, 80000, bufferTemp, 0, 15000);
+					buffer = null;
+					buffer = new byte[100000];
+					System.arraycopy(bufferTemp, 0, bufferTemp, 0, bufferTemp.length);
+					aP.notify();
+				}
+			} catch (IOException e) {
+				Log.d("BTDR", "BTDR IOE", e);
+			}
+		}
+	}
+	
+	BTDataReader dataReader = null;
+	/**
+	 * The loop to run when a connection is established.
+	 * @param play true if we should play music, false otherwise.
+	 */
+	public void connectedLoop(boolean play) {
+		if(play) {
+			InputStream is = null;
+			
+			try {
+				is = socket.getInputStream();
+			} catch(IOException ioe) {
+				Log.d("IS_FAIL", "Couldn't get input stream.");
+			}
+			
+			dataReader = new BTDataReader(is, btlbPlayer);
+		} else {
+		}
 	}
 }
