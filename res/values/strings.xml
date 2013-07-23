@@ -15,4 +15,5 @@
     <string name="title_activity_audio_stream">AudioStreamActivity</string>
     <string name="play_or_pause">Play or Pause</string>
     <string name="connected_to">Connected to:</string>
+    <string name="disconnect">Disconnect</string>
 </resources>

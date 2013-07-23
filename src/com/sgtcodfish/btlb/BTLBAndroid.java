@@ -1,7 +1,6 @@
 package com.sgtcodfish.btlb;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.UUID;
 
 import android.app.Activity;
@@ -13,9 +12,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.AudioTrack;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
@@ -86,7 +83,7 @@ public class BTLBAndroid extends Activity {
 	class BTLBNoisyBroadcastReceiver extends BroadcastReceiver {
 		@Override
 		public void onReceive(Context context, Intent intent) {
-			Log.d("BROADCAST_RECV", "Received a BECOMING_NOISY broadcast.");
+			Log.d("NOISY", "Received a BECOMING_NOISY broadcast.");
 			if(AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
 				if(state == BTLBState.BTLB_STATE_CONNECTED_PLAYING) {
 					setState(BTLBState.BTLB_STATE_CONNECTED_PAUSED);
@@ -103,7 +100,6 @@ public class BTLBAndroid extends Activity {
 		@Override
 		protected BluetoothSocket doInBackground(BluetoothServerSocket... params) {
 			try {
-				Log.d("DIB", "In doInBackground" + params[0]);
 				BluetoothSocket bluetoothSocket = params[0].accept();
 				Log.d("DIB", "Socket accepted: " + bluetoothSocket.toString());
 				return bluetoothSocket;
@@ -118,6 +114,7 @@ public class BTLBAndroid extends Activity {
 			Log.d("CONNECTION_ESTABLISHED", "Connection established with remote device: "
 					+ socket.getRemoteDevice().getName() + ": " + socket.getRemoteDevice().getAddress());
 			socketFound(socket);
+			setState(BTLBState.BTLB_STATE_CONNECTED_PLAYING);
 		}
 	}
 	
@@ -156,8 +153,11 @@ public class BTLBAndroid extends Activity {
 	}
 	
 	@Override
-	public void onDestroy() {		
+	public void onDestroy() {
 		this.unregisterReceiver(bluetoothBroadcastReceiver);
+		if(btlbPlayer != null) {
+			btlbPlayer.cease();
+		}
 		super.onDestroy();
 	}
 	
@@ -173,8 +173,7 @@ public class BTLBAndroid extends Activity {
 	 * Called to set the app into an unusable state if the device doesn't have bluetooth/has bluetooth but won't switch it on.
 	 */
 	public void bluetoothFail() {
-		this.
-		progressIndicator.setVisibility(View.INVISIBLE);
+		this.progressIndicator.setVisibility(View.INVISIBLE);
 		deviceName.setVisibility(View.INVISIBLE);
 		infoText.setText(R.string.needs_bluetooth);
 		
@@ -226,6 +225,7 @@ public class BTLBAndroid extends Activity {
 		state = nState;
 		Log.d("STATE_CHANGE", nState.toString());
 		
+		
 		switch(nState) {
 		case BTLB_STATE_NOBLUETOOTH:
 			bluetoothFail();
@@ -238,12 +238,18 @@ public class BTLBAndroid extends Activity {
 			break;
 			
 		case BTLB_STATE_CONNECTED_PLAYING:
-			infoText.setText("PLAYING");
+			if(btlbPlayer != null) {
+				btlbPlayer.setPaused(false);
+			}
 			break;
 			
 		case BTLB_STATE_CONNECTED_PAUSED:
-			infoText.setText("NOT PLAYING");
+			if(btlbPlayer != null) {
+				btlbPlayer.setPaused(true);
+			}
+			
 			break;
+			
 		default:
 			Log.d("WAT", "wat");
 			break;
@@ -251,8 +257,6 @@ public class BTLBAndroid extends Activity {
 	}
 	
 	public void startBluetoothSearch() {
-		//Log.d("BT_SEARCH_START", "User started bluetooth search.");
-		
 		// change the text/button
 		infoText.setText(R.string.please_wait);
 		progressIndicator.setVisibility(View.VISIBLE);
@@ -277,13 +281,28 @@ public class BTLBAndroid extends Activity {
 	}
 	
 	public void cancelBluetoothSearch() {
-		//Log.d("BT_SEARCH_CANCEL", "User cancelled bluetooth search.");
-		
-		// change text/button
 		if(btlbPlayer != null) {
 			btlbPlayer.cease();
 			btlbPlayer = null;
 		}
+		
+		if(socket != null) {
+			try {
+				socket.close();
+			} catch (IOException e) {}
+			socket = null;
+		}
+		
+		if(serverSocket != null) {
+			try {
+				serverSocket.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			serverSocket = null;
+		}
+		
+		// change text/button
 		progressIndicator.setVisibility(View.INVISIBLE);
 		if(searchBluetooth) {
 			socketWaiter.cancel(true);
@@ -306,7 +325,17 @@ public class BTLBAndroid extends Activity {
 	
 	public void socketFound(BluetoothSocket connection) {
 		socket = connection;
-		Log.d("MIN_BUFFER_SIZE", "Minimum buffer size: " + AudioTrack.getMinBufferSize(44100, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT));
+		
+		actionButton.setText(R.string.disconnect);
+		actionButton.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				setState(BTLBState.BTLB_STATE_WAITSTART);
+			}
+		});
+		progressIndicator.setVisibility(View.INVISIBLE);
+		infoText.setText(this.getString(R.string.connected_to) + "\n" + socket.getRemoteDevice().getName() + ": " + socket.getRemoteDevice().getAddress());
+		
 		btlbPlayer = new BTLBAudioPlayer(socket);
 		btlbPlayer.start();
 	}
